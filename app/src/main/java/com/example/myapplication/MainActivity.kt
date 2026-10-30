@@ -17,13 +17,43 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import android.content.Intent
 import android.util.Log
+import android.widget.ArrayAdapter
+import android.widget.ListView
+import android.widget.Toast
+import com.example.myapplication.KunciPesanan
+import com.example.myapplication.MenuMakanan
+import com.example.myapplication.R
+import java.text.NumberFormat
+import java.util.Locale
+
+
 
 class MainActivity : ComponentActivity() {
+
+        private val daftarMenu = listOf(
+            MenuMakanan("Nasi Goreng", 15_000),
+            MenuMakanan("Mie Goreng", 13_000),
+            MenuMakanan("Ayam Geprek", 18_000),
+            MenuMakanan("Soto Ayam", 16_000),
+            MenuMakanan("Bakso", 14_000),
+            MenuMakanan("Sate Ayam", 20_000),
+            MenuMakanan("Ikan Bakar", 25_000),
+            MenuMakanan("Capcay", 17_000),
+            MenuMakanan("Rendang", 22_000),
+            MenuMakanan("Gado-Gado", 19_000),   
+            MenuMakanan("Iga Bakar", 28_000)
+        )
+
+        private var posisiPilihan = -1
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_activity)
 
-        Log.d("PesanMakan", "FORM: onCreate — menyiapkan form")
+        val lvMenu = findViewById<ListView>(R.id.lvMenu)
+        val tvMenuDipilih =
+            findViewById<TextView>(R.id.tvMenuDipilih)
 
         val etNama = findViewById<EditText>(R.id.etNama)
         val etJumlah = findViewById<EditText>(R.id.etJumlah)
@@ -31,54 +61,94 @@ class MainActivity : ComponentActivity() {
         val btnPesan = findViewById<Button>(R.id.btnPesan)
         val btnReset = findViewById<Button>(R.id.btnReset)
 
-        val tvHasil = findViewById<TextView>(R.id.tvHasil)
+        val rupiah = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+            .apply {
+                maximumFractionDigits = 0
+            }
+
+        // Ubah data menu menjadi teks untuk setiap baris.
+        val teksMenu = daftarMenu.map { menu ->
+            "${menu.nama} - ${rupiah.format(menu.harga)}"
+        }
+
+        // Hubungkan data dengan layout pilihan tunggal bawaan.
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_list_item_single_choice,
+            teksMenu
+        )
+
+        lvMenu.adapter = adapter
+
+        // Pulihkan pilihan jika Activity dibuat ulang.
+        posisiPilihan = savedInstanceState
+            ?.getInt("posisi_pilihan", -1) ?: -1
+
+        if (posisiPilihan in daftarMenu.indices) {
+            lvMenu.setItemChecked(posisiPilihan, true)
+
+            val menu = daftarMenu[posisiPilihan]
+            tvMenuDipilih.text =
+                "Dipilih: ${menu.nama} " +
+                        "(${rupiah.format(menu.harga)})"
+        }
+
+        // Tangani klik pada menu.
+        lvMenu.setOnItemClickListener { _, _, position, _ ->
+            posisiPilihan = position
+
+            val menu = daftarMenu[position]
+
+            tvMenuDipilih.text =
+                "Dipilih: ${menu.nama} " +
+                        "(${rupiah.format(menu.harga)})"
+        }
 
         btnPesan.setOnClickListener {
-            val nama = etNama.text.toString().trim()
-            val jumlahPesanan = etJumlah.text.toString().trim()
-
             etNama.error = null
             etJumlah.error = null
 
-            if (nama.isBlank()){
-                etNama.error = "Masukkan nama"
+            // Periksa apakah pengguna sudah memilih menu.
+            if (posisiPilihan !in daftarMenu.indices) {
+                Toast.makeText(
+                    this,
+                    "Pilih menu terlebih dahulu",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                return@setOnClickListener
+            }
+
+            val nama = etNama.text.toString().trim()
+            val jumlah = etJumlah.text.toString()
+                .trim()
+                .toIntOrNull()
+
+            if (nama.isBlank()) {
+                etNama.error = "Masukkan nama pelanggan"
                 etNama.requestFocus()
                 return@setOnClickListener
             }
 
-            val jumlah = jumlahPesanan.toIntOrNull()
-
-            if (jumlah == null){
-                etJumlah.error = "Masukkan jumlah pesanan"
-                etJumlah.requestFocus()
-                return@setOnClickListener
-            }
-            if (jumlah !in 1..100){
-                etJumlah.error = "jumlah pesanan dibatasi 100 porsi"
+            if (jumlah == null || jumlah !in 1..100) {
+                etJumlah.error = "Jumlah harus 1–100 porsi"
                 etJumlah.requestFocus()
                 return@setOnClickListener
             }
 
-//            tentukan activity tujuan
-            val tujuan = Intent(this, RingkasanActivity::class.java)
+            val menu = daftarMenu[posisiPilihan]
 
-//            kirim data pesanan
+            val tujuan = Intent(
+                this,
+                RingkasanActivity::class.java
+            )
+
             tujuan.putExtra(KunciPesanan.NAMA, nama)
             tujuan.putExtra(KunciPesanan.JUMLAH, jumlah)
+            tujuan.putExtra(KunciPesanan.MENU, menu.nama)
+            tujuan.putExtra(KunciPesanan.HARGA, menu.harga)
 
-//            buka layar ringkasan
             startActivity(tujuan)
-
-
-            val harga = 15_000
-            val total = jumlah*harga
-
-            val formatRupiah = java.text.NumberFormat
-                .getCurrencyInstance(java.util.Locale("id", "ID"))
-                .apply {
-                    maximumFractionDigits
-                }
-
         }
 
         btnReset.setOnClickListener {
@@ -88,38 +158,51 @@ class MainActivity : ComponentActivity() {
             etNama.error = null
             etJumlah.error = null
 
-            tvHasil.text = "Hasil pesanan akan tampil disini"
+            posisiPilihan = -1
+            lvMenu.clearChoices()
+
+            // Perbarui tampilan tanda pilihan.
+            adapter.notifyDataSetChanged()
+
+            tvMenuDipilih.text = "Menu belum dipilih"
             etNama.requestFocus()
         }
     }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("posisi_pilihan", posisiPilihan)
+        super.onSaveInstanceState(outState)
+    }
+
+
     override fun onStart() {
         super.onStart()
-        Log.d("PesanMakan", "FORM: onStart — form mulai terlihat")
+        Log.d("PesanMakan", "HALAMAN FORM: onStart — form mulai terlihat")
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d("PesanMakan", "FORM: onResume — form siap digunakan")
+        Log.d("PesanMakan", "HALAMAN FORM: onResume — form siap digunakan")
     }
 
     override fun onPause() {
         super.onPause()
-        Log.d("PesanMakan", "FORM: onPause — form kehilangan posisi aktif")
+        Log.d("PesanMakan", "HALAMAN FORM: onPause — form kehilangan posisi aktif")
     }
 
     override fun onStop() {
         super.onStop()
-        Log.d("PesanMakan", "FORM: onStop — form tidak terlihat")
+        Log.d("PesanMakan", "HALAMAN FORM: onStop — form tidak terlihat")
     }
 
     override fun onRestart() {
         super.onRestart()
-        Log.d("PesanMakan", "FORM: onRestart — form akan tampil kembali")
+        Log.d("PesanMakan", "HALAMAN FORM: onRestart — form akan tampil kembali")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("PesanMakan", "FORM: onDestroy — instance form diakhiri")
+        Log.d("PesanMakan", "HALAMAN FORM: onDestroy — instance form diakhiri")
     }
 }
 
